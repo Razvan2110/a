@@ -1,0 +1,392 @@
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <dirent.h>
+#include <stdlib.h>
+
+void listDirRec(const char *path, char *filter, int filterflag, int sizeflag, off_t size)
+{
+    DIR *dir = NULL;
+    struct dirent *entry = NULL;
+    char fullPath[512];
+    struct stat statbuf;
+    char filePath[512];
+    dir = opendir(path);
+    if (dir == NULL)
+    {
+        printf("ERROR\n");
+        printf("invalid directoery path");
+        return;
+    }
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+        {
+            if (filterflag == 1)
+            {
+                if (strstr(entry->d_name, filter) != NULL &&
+                    strcmp(entry->d_name + strlen(entry->d_name) - strlen(filter), filter) == 0)
+                {
+                    snprintf(fullPath, 512, "%s/%s", path, entry->d_name);
+                    if (lstat(fullPath, &statbuf) == 0)
+                    {
+                        printf("%s\n", fullPath);
+                        if (S_ISDIR(statbuf.st_mode))
+                        {
+                            listDirRec(fullPath, filter, filterflag, sizeflag, size);
+                        }
+                    }
+                }
+            }
+
+            else if (sizeflag == 1)
+            {
+
+                snprintf(filePath, 512, "%s/%s", path, entry->d_name);
+                if (lstat(filePath, &statbuf) == 0)
+                {
+
+                    if (S_ISREG(statbuf.st_mode))
+                    {
+                        off_t fileSize = statbuf.st_size;
+                        if (fileSize > size)
+                        {
+                            printf("%s\n", filePath);
+                        }
+                    }
+                    else if (S_ISDIR(statbuf.st_mode)) // Check if it's a directory
+                    {
+                        listDirRec(filePath, filter, filterflag, sizeflag, size);
+                    }
+                }
+            }
+
+            else
+            {
+                snprintf(fullPath, 512, "%s/%s", path, entry->d_name);
+                if (lstat(fullPath, &statbuf) == 0)
+                {
+                    printf("%s\n", fullPath);
+                    if (S_ISDIR(statbuf.st_mode))
+                    {
+                        listDirRec(fullPath, filter, filterflag, sizeflag, size);
+                    }
+                }
+            }
+        }
+    }
+
+    closedir(dir);
+}
+
+int listDir(const char *path, char *filter, int filterflag, int sizeflag, off_t size)
+{
+    DIR *dir = NULL;
+    struct dirent *entry = NULL;
+    char filePath[512];
+    // struct stat statbuf;
+
+    dir = opendir(path);
+    if (dir == NULL)
+    {
+        printf("ERROR\n");
+        printf("invalid directory path");
+        return -1;
+    }
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+        {
+            if (filterflag == 1)
+            {
+                if (strstr(entry->d_name, filter) != NULL &&
+                    strcmp(entry->d_name + strlen(entry->d_name) - strlen(filter), filter) == 0)
+                {
+                    snprintf(filePath, 512, "%s/%s", path, entry->d_name);
+                    printf("%s\n", filePath);
+                }
+            }
+            else if (sizeflag == 1)
+            {
+                int sizeFile;
+                int fd;
+                snprintf(filePath, 512, "%s/%s", path, entry->d_name);
+                fd = open(filePath, O_RDONLY);
+                if (fd == -1)
+                {
+                    perror("invalid directory path");
+                    return 1;
+                }
+                sizeFile = lseek(fd, 0, SEEK_END);
+                close(fd);
+                if (sizeFile > size)
+                {
+
+                    printf("%s\n", filePath);
+                }
+            }
+            else
+            {
+                snprintf(filePath, 512, "%s/%s", path, entry->d_name);
+                printf("%s\n", filePath);
+            }
+        }
+    }
+    closedir(dir);
+    return 0;
+}
+
+
+
+typedef struct
+{
+    unsigned char sect_name[18];
+    int sect_type;
+    int sect_offset;
+    int sect_size;
+} sectionHeader;
+int parseFile(const char *path)
+
+{
+
+    int version;
+    char no_of_sections;
+
+    short int headerSize;
+    char magic;
+
+    int fd;
+    // off_t filesize;
+
+    fd = open(path, O_RDONLY);
+    if (fd == -1)
+    {
+        perror("Could not open input file");
+        return 1;
+    }
+    char c = 0;
+    // filesize = lseek(fd, 0, SEEK_END);
+    int audx;
+
+    if (lseek(fd, -1, SEEK_END) == -1)
+    {
+        printf("ERROR\n");
+        printf("wrong magic");
+    }
+    else
+    {
+        read(fd, &c, 1);
+        magic = c;
+    }
+    if (magic != c)
+    {
+        printf("ERROR\n");
+        printf("wrong magic");
+    }
+    if (lseek(fd, -3, SEEK_END) == -1)
+    {
+        printf("ERROR\n");
+        printf("wrong version");
+    }
+    else
+    {
+        read(fd, &aux, 2);
+        headerSize = aux;
+        // printf("headersize : %hd\n", headerSize);
+        // printf("filesize : %jd\n", filesize);
+    }
+
+    int nrs74=0;
+    char headerString[headerSize];
+    // citire header
+    if (lseek(fd, -headerSize, SEEK_END) == -1)
+    {
+        printf("ERROR\n");
+    }
+    else
+    {
+        read(fd, headerString, headerSize);
+    }
+
+    if (lseek(fd, -headerSize, SEEK_END) == -1)
+    {
+        printf("ERROR\n");
+    }
+    else
+    {
+        read(fd, &version, 4);
+
+        printf("version=%d\n", version);
+    }
+    if (version < 99 || version > 195)
+    {
+        printf("ERROR\n");
+        printf("wrong version");
+    }
+    if (lseek(fd, -headerSize + 4, SEEK_END) == -1)
+    {
+        printf("ERROR\n");
+        printf("wrong version");
+    }
+    else
+    {
+        read(fd, &no_of_sections, 1);
+        printf("nr_sections=%d\n", no_of_sections);
+    }
+    if ((no_of_sections < 6 && no_of_sections != 2) || (no_of_sections > 14 && no_of_sections != 2))
+    {
+        printf("ERROR\n");
+        printf("sect_nr");
+        return -1;
+    }
+    int nrs = no_of_sections;
+    
+    sectionHeader *sections = calloc(nrs, sizeof(sectionHeader));
+    for (int k = 0; k < no_of_sections; k++)
+    {
+
+        {
+            
+            read(fd, sections[k].sect_name, 18);
+
+            read(fd, &sections[k].sect_type, 4);
+            if (sections[k].sect_type != 18 && sections[k].sect_type != 74)
+            {
+                printf("ERROR\n");
+                printf("sect_types");
+                return -1;
+            }
+            else
+            {printf("section%d: ", k + 1);
+                printf("%s ", sections[k].sect_name);
+                printf("%d ", sections[k].sect_type);
+                read(fd, &sections[k].sect_offset, 4);
+                read(fd, &sections[k].sect_size, 4);
+                printf("%d\n", sections[k].sect_size);
+                if(sections[k].sect_type == 74) nrs74++;
+            }
+        }
+    }
+
+    free(sections);
+    close(fd);
+
+    return nrs74;
+}
+
+void findAll(const char *path)
+{
+    DIR *dir = NULL;
+    struct dirent *entry = NULL;
+    char fullPath[512];
+    struct stat statbuf;
+   // char filePath[512];
+    dir = opendir(path);
+    if (dir == NULL)
+    {
+        printf("ERROR\n");
+        printf("invalid directoery path");
+        return;
+    }
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+        {
+        
+           
+            {
+                snprintf(fullPath, 512, "%s/%s", path, entry->d_name);
+                if (lstat(fullPath, &statbuf) == 0)
+                {
+                    
+                    if (S_ISREG(statbuf.st_mode))
+                        {
+                        if(parseFile(entry->d_name)>5);
+                        printf("%s\n" , fullPath);
+                        }
+                    if (S_ISDIR(statbuf.st_mode))
+                    {
+                        findAll(fullPath);
+                    }
+                }
+            }
+        }
+    }
+
+    closedir(dir);
+}
+
+
+
+int main(int argc, char **argv)
+{
+    off_t size;
+    char marime[20];
+    char filtru[100] = "";
+    int filterflag = 0;
+    int sizeflag = 0;
+    if (argc >= 2)
+    {
+        if (strcmp(argv[1], "variant") == 0)
+        {
+            printf("54359\n");
+        }
+        else if (strcmp(argv[1], "list") == 0)
+        {
+            int recursive = 0;
+
+            for (int i = 2; i < argc; i++)
+            {
+                if (strcmp(argv[i], "recursive") == 0)
+                    recursive = 1;
+            }
+            /// FILTRARE
+            for (int i = 2; i < argc; i++)
+            {
+                if (strstr(argv[i], "name_ends_with=") != NULL)
+                {
+                    strcpy(filtru, argv[i] + 15);
+                    filterflag = 1;
+                }
+                else if (strstr(argv[i], "size_greater=") != NULL)
+                {
+                    strcpy(marime, argv[i] + 13);
+                    size = atoi(marime);
+                    sizeflag = 1;
+                }
+            }
+            if (recursive == 0)
+            {
+                printf("SUCCESS\n");
+                char *path = argv[argc - 1];
+                path = path + 5;
+                listDir(path, filtru, filterflag, sizeflag, size);
+            }
+            else if (recursive == 1)
+            {
+                printf("SUCCESS\n");
+                char *path = argv[argc - 1];
+                path = path + 5;
+                listDirRec(path, filtru, filterflag, sizeflag, size);
+            }
+        }
+        else if (strcmp(argv[1], "parse") == 0)
+        {
+            printf("SUCCESS\n");
+            char *path = argv[argc - 1];
+            path = path + 5;
+            parseFile(path);
+        }
+         else if (strcmp(argv[1], "findall") == 0)
+        {
+            printf("SUCCESS\n");
+            char *path = argv[argc - 1];
+            path = path + 5;
+           findAll(path);
+        }
+    }
+    return 0;
+}
